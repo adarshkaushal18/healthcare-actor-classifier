@@ -1,0 +1,51 @@
+import pandas as pd
+import torch
+import pickle
+import json
+from transformers import BertTokenizer, BertModel
+
+# Load the pre-trained model and tokenizer
+model = pickle.load(open('logistic_model.pkl', 'rb'))
+tokenizer = BertTokenizer.from_pretrained('tokenizer/')
+bert_model = BertModel.from_pretrained('bert_model/')
+
+# Function to preprocess text and get embeddings
+def get_bert_embedding(text):
+    inputs = tokenizer(text, return_tensors="pt", padding="max_length", truncation=True, max_length=128)
+    with torch.no_grad():
+        outputs = bert_model(**inputs)
+    cls_embedding = outputs.last_hidden_state[:, 0, :]
+    return cls_embedding.numpy()
+
+# Function for actor classification
+def classify_healthcare_actors(input_csv, output_json):
+    try:
+        # Load the input data
+        data = pd.read_csv(input_csv)
+        if 'text' not in data.columns:
+            raise ValueError("Input CSV must have a 'text' column for classification.")
+
+        # Process each text and predict the actor type
+        predictions = []
+        for index, row in data.iterrows():
+            text = row['text']
+            embedding = get_bert_embedding(text)
+            predicted_label = model.predict(embedding)[0]  # Assuming model.predict returns the label
+            predictions.append({
+                "text": text,
+                "predicted_actor": predicted_label
+            })
+
+        # Save predictions to a JSON file
+        with open(output_json, 'w') as outfile:
+            json.dump(predictions, outfile, indent=4)
+
+        print(f"Predictions saved successfully to {output_json}")
+
+    except FileNotFoundError:
+        print(f"Error: The file '{input_csv}' was not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+
+classify_healthcare_actors('healthcare_actor_eval.csv', 'output_file.json')
